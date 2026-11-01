@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "MOVEIT",
+    "slug": "moveit",
+    "scheme": "moveit",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MOVEIT reads your current location only when you choose to use device location. It is not saved to your profile."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
