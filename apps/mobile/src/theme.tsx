@@ -1,11 +1,15 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
+  useCallback,
   type PropsWithChildren,
 } from "react";
 import { useColorScheme } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -72,18 +76,60 @@ const context = createContext<{
   mode: ThemeMode;
   resolvedMode: "light" | "dark";
   isDark: boolean;
+  modeLoaded: boolean;
+  modeError: string;
   setMode: (mode: ThemeMode) => void;
 }>({
   colors: palettes.light,
   mode: "system",
   resolvedMode: "light",
   isDark: false,
+  modeLoaded: false,
+  modeError: "",
   setMode: () => undefined,
 });
 
+const themeStorageKey = "moveit:theme:v1";
+
 export function ThemeProvider({ children }: PropsWithChildren) {
   const systemScheme = useColorScheme();
-  const [mode, setMode] = useState<ThemeMode>("light");
+  const [mode, setModeState] = useState<ThemeMode>("system");
+  const [modeLoaded, setModeLoaded] = useState(false);
+  const [modeError, setModeError] = useState("");
+  const pendingMode = useRef<ThemeMode | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(themeStorageKey)
+      .then(async (saved) => {
+        if (!active) return;
+        const selected = pendingMode.current
+          ?? (saved === "system" || saved === "light" || saved === "dark" ? saved : "system");
+        setModeState(selected);
+        if (pendingMode.current) await AsyncStorage.setItem(themeStorageKey, selected);
+      })
+      .catch((caught: unknown) => {
+        if (active) setModeError(caught instanceof Error ? caught.message : "Theme preference could not be loaded.");
+      })
+      .finally(() => {
+        if (active) setModeLoaded(true);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const setMode = useCallback((nextMode: ThemeMode) => {
+    setModeState(nextMode);
+    if (!modeLoaded) {
+      pendingMode.current = nextMode;
+      return;
+    }
+    void AsyncStorage.setItem(themeStorageKey, nextMode)
+      .then(() => setModeError(""))
+      .catch((caught: unknown) => {
+        setModeError(caught instanceof Error ? caught.message : "Theme preference could not be saved.");
+      });
+  }, [modeLoaded]);
+
   const resolvedMode = mode === "system" ? (systemScheme ?? "light") : mode;
   const value = useMemo(
     () => ({
@@ -91,9 +137,11 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       mode,
       resolvedMode,
       isDark: resolvedMode === "dark",
+      modeLoaded,
+      modeError,
       setMode,
     }),
-    [mode, resolvedMode],
+    [mode, resolvedMode, modeLoaded, modeError, setMode],
   );
 
   return <context.Provider value={value}>{children}</context.Provider>;

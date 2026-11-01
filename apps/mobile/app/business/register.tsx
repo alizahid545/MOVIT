@@ -134,8 +134,8 @@ function LiveBusinessRegistration() {
 
   return (
     <Page>
-      <Header eyebrow="LIVE BUSINESS DIRECTORY" title="Create a business profile." action={<Button label="Back" variant="quiet" onPress={() => router.back()} />} />
-      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>This authenticated profile is separate from local preview data. Published listings are owner-submitted and not independently verified.</Text>
+      <Header eyebrow="VENUE ONBOARDING · STEP 1 OF 2" title="Set up your business." action={<Button label="Back" variant="quiet" onPress={() => router.back()} />} />
+      <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>This creates an account-backed business profile, then takes you to the first venue location. Directory listings are owner-submitted and not independently verified; court schedules, pricing and bookings are not connected to this backend.</Text>
       {businesses.length ? (
         <View style={{ gap: 8 }}>
           <SectionTitle title="Add a location to an existing business" />

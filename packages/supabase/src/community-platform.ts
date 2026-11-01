@@ -776,5 +776,14 @@ export function createCommunityPlatformRepository(client: SupabaseClient) {
         .eq("user_id", userId);
       if (error) throw new PlatformRepositoryError("SOCIAL_ACTION_FAILED", error.message, { cause: error });
     },
+
+    async markAllNotificationsRead(): Promise<void> {
+      const userId = await currentUserId();
+      const { error } = await client.from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .is("read_at", null);
+      if (error) throw new PlatformRepositoryError("SOCIAL_ACTION_FAILED", error.message, { cause: error });
+    },
   };
 }

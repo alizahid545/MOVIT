@@ -8,7 +8,12 @@ import {
   type DiscoveredAthlete,
   type SportSkillLevel,
 } from "@moveit/shared";
-import { createCommunityPlatformRepository } from "@moveit/supabase";
+import {
+  createCommunityPlatformRepository,
+  createDirectoryRepository,
+  type CoachListing,
+  type VenueListing,
+} from "@moveit/supabase";
 import { Button, Card, Header, Icon, Page, Pill, SectionTitle } from "../../src/components/ui";
 import { supabase } from "../../src/supabase";
 import { useMoveitTheme } from "../../src/theme";
@@ -39,6 +44,9 @@ export default function DiscoverScreen() {
   const [skillLevel, setSkillLevel] = useState("");
   const [athletes, setAthletes] = useState<DiscoveredAthlete[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [venues, setVenues] = useState<VenueListing[]>([]);
+  const [coaches, setCoaches] = useState<CoachListing[]>([]);
+  const [inquiryDrafts, setInquiryDrafts] = useState<Record<string, string>>({});
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [sportsQuery, setSportsQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -48,7 +56,9 @@ export default function DiscoverScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
   const [busyFollowId, setBusyFollowId] = useState("");
+  const [sendingInquiryId, setSendingInquiryId] = useState("");
   const filtersRef = useRef({ query, city, sportId, skillLevel, kind });
   filtersRef.current = { query, city, sportId, skillLevel, kind };
 
@@ -73,7 +83,22 @@ export default function DiscoverScreen() {
         limit: PAGE_SIZE,
         offset: nextOffset,
       };
-      if (filtersRef.current.kind === "athletes") {
+      if (filtersRef.current.kind === "venues" || filtersRef.current.kind === "coaches") {
+        const directory = createDirectoryRepository(supabase);
+        if (filtersRef.current.kind === "venues") {
+          const results = await directory.discoverVenues(filters);
+          setVenues((current) => append
+            ? [...current, ...results.filter((item) => !current.some(({ id }) => id === item.id))]
+            : results);
+          setHasMore(results.length === PAGE_SIZE);
+        } else {
+          const results = await directory.discoverCoaches(filters);
+          setCoaches((current) => append
+            ? [...current, ...results.filter((item) => !current.some(({ userId }) => userId === item.userId))]
+            : results);
+          setHasMore(results.length === PAGE_SIZE);
+        }
+      } else if (filtersRef.current.kind === "athletes") {
         const results = await repository.discoverAthletes(filters);
         const currentFollowed = await repository.loadFollowedPlayerIds(results.map(({ id }) => id));
         if (append) {
@@ -132,7 +157,7 @@ export default function DiscoverScreen() {
     filtersRef.current = { ...filtersRef.current, kind: nextKind };
     setKind(nextKind);
     setError("");
-    if (nextKind === "athletes" || nextKind === "activities") void refresh(0, false);
+    if (nextKind !== "sports") void refresh(0, false);
   };
 
   const toggleFollow = async (athlete: DiscoveredAthlete) => {
@@ -156,6 +181,28 @@ export default function DiscoverScreen() {
       setActionError(caught instanceof Error ? caught.message : "Follow change could not be saved.");
     } finally {
       setBusyFollowId("");
+    }
+  };
+
+  const sendInquiry = async (listingType: "venue" | "coach", listingId: string) => {
+    if (!supabase) return;
+    setSendingInquiryId(listingId);
+    setActionError("");
+    setActionNotice("");
+    try {
+      const directory = createDirectoryRepository(supabase);
+      const message = inquiryDrafts[listingId] ?? "";
+      if (listingType === "venue") {
+        await directory.createVenueInquiry(listingId, message);
+      } else {
+        await directory.createCoachInquiry(listingId, message);
+      }
+      setInquiryDrafts((current) => ({ ...current, [listingId]: "" }));
+      setActionNotice("Your private inquiry was sent.");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Your inquiry could not be sent.");
+    } finally {
+      setSendingInquiryId("");
     }
   };
 
@@ -217,9 +264,136 @@ export default function DiscoverScreen() {
           </Text>
         </View>
       ) : kind === "venues" || kind === "coaches" ? (
-        <Empty message={kind === "venues"
-          ? "No verified venue directory is connected to the public backend yet. We are not showing demo listings as real venues."
-          : "No verified coach directory is connected to the public backend yet. We are not showing demo listings as real coaches."} />
+        <>
+          <View style={{ gap: 10 }}>
+            <TextInput
+              accessibilityLabel={kind === "venues" ? "Search venues" : "Search coaches"}
+              value={query}
+              onChangeText={setQuery}
+              placeholder={kind === "venues" ? "Venue or business name" : "Coach or specialty"}
+              placeholderTextColor={colors.muted}
+              returnKeyType="search"
+              onSubmitEditing={search}
+              style={inputStyle(colors)}
+            />
+            <TextInput
+              accessibilityLabel="Filter by city or area"
+              value={city}
+              onChangeText={setCity}
+              placeholder="City or area"
+              placeholderTextColor={colors.muted}
+              returnKeyType="search"
+              onSubmitEditing={search}
+              style={inputStyle(colors)}
+            />
+            <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>Sport</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <Pill label="All sports" selected={!sportId} onPress={() => setSportId("")} />
+              {sportsCatalogue.filter((sport) => sport.popular).slice(0, 9).map((sport) => (
+                <Pill
+                  key={sport.id}
+                  label={sport.name}
+                  selected={sportId === sport.id}
+                  onPress={() => setSportId((current) => current === sport.id ? "" : sport.id)}
+                />
+              ))}
+            </View>
+            <Button label="Search" icon="search" onPress={search} />
+          </View>
+          {loading && !refreshing ? <Loading /> : null}
+          {error ? (
+            <Card style={{ gap: 10 }}>
+              <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
+              <Button label="Try again" variant="secondary" onPress={() => void refresh()} />
+            </Card>
+          ) : null}
+          {actionError ? <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 12 }}>{actionError}</Text> : null}
+          {actionNotice ? <Text accessibilityRole="status" style={{ color: colors.accent, fontSize: 12 }}>{actionNotice}</Text> : null}
+          {!loading && !error && kind === "venues" ? (
+            <>
+              <SectionTitle title="Published venues" />
+              {venues.map((venue) => (
+                <Card key={venue.id} style={{ gap: 9 }}>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700" }}>{venue.name}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>
+                    {venue.businessName} · {[venue.area, venue.city].filter(Boolean).join(", ")}
+                  </Text>
+                  <Text style={{ color: colors.text, fontSize: 12 }}>
+                    {venue.sportIds.map((id) => sportsCatalogue.find((sport) => sport.id === id)?.name ?? id).join(" · ") || "Sports not specified"}
+                  </Text>
+                  {venue.description ? <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{venue.description}</Text> : null}
+                  <Text style={{ color: colors.muted, fontSize: 10 }}>Owner-listed · not independently verified · booking availability and prices are not provided.</Text>
+                  <TextInput
+                    accessibilityLabel={`Private inquiry for ${venue.name}`}
+                    value={inquiryDrafts[venue.id] ?? ""}
+                    onChangeText={(value) => setInquiryDrafts((current) => ({ ...current, [venue.id]: value }))}
+                    multiline
+                    maxLength={2000}
+                    placeholder="Write a private inquiry"
+                    placeholderTextColor={colors.muted}
+                    style={[inputStyle(colors), { minHeight: 76, textAlignVertical: "top", paddingTop: 12 }]}
+                  />
+                  <Button
+                    label={sendingInquiryId === venue.id ? "Sending…" : "Contact venue"}
+                    disabled={Boolean(sendingInquiryId) || !(inquiryDrafts[venue.id] ?? "").trim()}
+                    onPress={() => void sendInquiry("venue", venue.id)}
+                  />
+                </Card>
+              ))}
+              {!venues.length ? <Empty message="No published venues match these filters. Try another city or sport. Unverified demo listings are not shown as real venues." /> : null}
+            </>
+          ) : null}
+          {!loading && !error && kind === "coaches" ? (
+            <>
+              <SectionTitle title="Published coaches" />
+              {coaches.map((coach) => (
+                <Card key={coach.userId} style={{ gap: 9 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    {coach.avatarPublicUrl
+                      ? <Image accessibilityLabel={`${coach.displayName} profile photo`} source={{ uri: coach.avatarPublicUrl }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+                      : <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.softGreen, alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ color: colors.accent, fontWeight: "700" }}>{coach.displayName.charAt(0).toUpperCase()}</Text>
+                      </View>}
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}>{coach.displayName}</Text>
+                      <Text style={{ color: colors.muted, fontSize: 11 }}>{coach.headline} · {[coach.area, coach.city].filter(Boolean).join(", ")}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: colors.text, fontSize: 12 }}>
+                    {coach.sportIds.map((id) => sportsCatalogue.find((sport) => sport.id === id)?.name ?? id).join(" · ") || "Sports not specified"}
+                  </Text>
+                  {coach.specialties.length ? <Text style={{ color: colors.muted, fontSize: 11 }}>{coach.specialties.join(" · ")}</Text> : null}
+                  {coach.bio ? <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>{coach.bio}</Text> : null}
+                  <Text style={{ color: colors.muted, fontSize: 10 }}>Coach-listed · credentials are not independently verified.</Text>
+                  <TextInput
+                    accessibilityLabel={`Private inquiry for ${coach.displayName}`}
+                    value={inquiryDrafts[coach.userId] ?? ""}
+                    onChangeText={(value) => setInquiryDrafts((current) => ({ ...current, [coach.userId]: value }))}
+                    multiline
+                    maxLength={2000}
+                    placeholder="Write a private inquiry"
+                    placeholderTextColor={colors.muted}
+                    style={[inputStyle(colors), { minHeight: 76, textAlignVertical: "top", paddingTop: 12 }]}
+                  />
+                  <Button
+                    label={sendingInquiryId === coach.userId ? "Sending…" : "Contact coach"}
+                    disabled={Boolean(sendingInquiryId) || !(inquiryDrafts[coach.userId] ?? "").trim()}
+                    onPress={() => void sendInquiry("coach", coach.userId)}
+                  />
+                </Card>
+              ))}
+              {!coaches.length ? <Empty message="No published coaches match these filters. Try another city or sport. Unverified demo listings are not shown as real coaches." /> : null}
+            </>
+          ) : null}
+          {hasMore && !loading && !error ? (
+            <Button
+              label={loadingMore ? "Loading…" : "Load more"}
+              variant="secondary"
+              disabled={loadingMore}
+              onPress={() => void refresh(offset + PAGE_SIZE, true)}
+            />
+          ) : null}
+        </>
       ) : (
         <>
           <View style={{ gap: 10 }}>

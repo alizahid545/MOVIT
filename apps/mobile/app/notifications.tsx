@@ -54,12 +54,29 @@ export default function NotificationsScreen() {
     }
   };
 
+  const markAllRead = async () => {
+    if (!supabase || !notifications.some((item) => !item.readAt)) return;
+    setError("");
+    try {
+      await createCommunityPlatformRepository(supabase).markAllNotificationsRead();
+      const readAt = new Date().toISOString();
+      setNotifications((current) => current.map((item) => ({ ...item, readAt: item.readAt ?? readAt })));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Notifications could not be marked as read.");
+    }
+  };
+
   return (
     <Page>
       <Header
         eyebrow="ACTIVITY"
         title="Notifications."
-        action={<Button label="Back" variant="quiet" onPress={() => router.back()} />}
+        action={
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Button label="Mark all read" variant="quiet" disabled={!notifications.some((item) => !item.readAt)} onPress={() => void markAllRead()} />
+            <Button label="Back" variant="quiet" onPress={() => router.back()} />
+          </View>
+        }
       />
       {loading ? (
         <View accessibilityRole="progressbar" style={{ alignItems: "center", padding: 28 }}>

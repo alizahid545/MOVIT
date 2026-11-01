@@ -1,19 +1,19 @@
 import { useCallback, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { ActivityIndicator, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Text, TextInput, View } from "react-native";
 import type { Workout } from "@moveit/shared";
 import { getWeeklyWorkoutMinutes, getWorkoutPerformanceSummary } from "@moveit/shared";
 import { Button, Card, Header, Icon, Page, Pill, SectionTitle } from "../../src/components/ui";
 import { loadFitnessData } from "../../src/fitness-api";
 import { getDevelopmentProfile, updateDevelopmentProfile } from "../../src/development-profile";
-import { AccountProfileEditor } from "../../src/components/account-profile-editor";
 import { type PreviewProfileVisibility } from "../../src/challenge-preview";
 import { getPreviewProfileCounts, setPreviewOwnerVisibility } from "../../src/profile-social-preview";
 import { searchSports, sportCategories, sportsCatalogue, toggleSportRole, type SportCategory, type SportInterest, type SportRole } from "../../src/sports-catalogue";
+import { createAthleteProfileRepository, createCommunityPlatformRepository } from "@moveit/supabase";
+import { loadMyAthleteProfile } from "../../src/athlete-profile-api";
 import { supabase } from "../../src/supabase";
-import { useMoveitTheme, type ThemeMode } from "../../src/theme";
+import { useMoveitTheme } from "../../src/theme";
 
-const appearanceModes: ThemeMode[] = ["system", "light", "dark"];
 const sportRoles: { id: SportRole; label: string }[] = [
   { id: "playing", label: "Play" },
   { id: "following", label: "Follow" },
@@ -22,7 +22,7 @@ const sportRoles: { id: SportRole; label: string }[] = [
 ];
 
 export default function ProfileScreen() {
-  const { colors, mode, setMode } = useMoveitTheme();
+  const { colors } = useMoveitTheme();
   const [accountSessionState, setAccountSessionState] = useState<"checking" | "signed-in" | "signed-out" | "error">(
     supabase ? "checking" : "signed-out",
   );
@@ -47,9 +47,6 @@ export default function ProfileScreen() {
   const [selectedInterests, setSelectedInterests] = useState<SportInterest[]>(savedProfile.selectedInterests);
   const [sportQuery, setSportQuery] = useState("");
   const [sportCategory, setSportCategory] = useState<SportCategory | "All categories">("All categories");
-  const modeIndex = appearanceModes.indexOf(mode);
-  const nextMode = appearanceModes[(modeIndex + 1) % appearanceModes.length];
-  const modeLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
 
   const refreshAccountSession = useCallback(async () => {
     if (!supabase) {
@@ -145,14 +142,19 @@ export default function ProfileScreen() {
     );
   }
 
-  if (accountSessionState === "signed-in") return <AccountProfileEditor />;
+  if (accountSessionState === "signed-in") return <AccountProfileView />;
 
   return (
     <Page>
       <Header
         eyebrow="LOCAL PREVIEW · NOT AN ACCOUNT"
         title="Your profile."
-        action={<Button label="Switch / add profile" icon="repeat" variant="secondary" onPress={() => router.push("/role-selection")} />}
+        action={
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Button label="Settings" icon="settings" variant="secondary" onPress={() => router.push("/profile/settings")} />
+            <Button label="Switch" icon="repeat" variant="quiet" onPress={() => router.push("/role-selection")} />
+          </View>
+        }
       />
 
       <Card>
@@ -382,27 +384,11 @@ export default function ProfileScreen() {
         <Text style={{ color: colors.muted, fontSize: 11 }}>No challenges have been completed in this preview. There are no achievements to display yet.</Text>
       </View>
 
-      <View style={{ gap: 12 }}>
-        <SectionTitle title="App appearance" />
-        <Card>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-              <Icon name="sliders" size={18} color={colors.muted} />
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ color: colors.text, fontSize: 13, fontWeight: "600" }}>Theme</Text>
-                <Text style={{ color: colors.muted, fontSize: 11 }}>Current setting: {modeLabel}</Text>
-              </View>
-            </View>
-            <Pill label={`Switch to ${nextMode}`} selected={false} onPress={() => setMode(nextMode)} />
-          </View>
-          <Text style={{ color: colors.muted, fontSize: 10 }}>System follows your device. Manual theme changes last for this app session.</Text>
-        </Card>
-      </View>
-
       <Button
-        label="Go to account sign-in"
+        label="Open profile settings"
         variant="secondary"
-        onPress={() => router.push("/auth")}
+        icon="settings"
+        onPress={() => router.push("/profile/settings")}
       />
       <Text style={{ color: colors.muted, fontSize: 10, lineHeight: 16 }}>
         Profile details, sports interests, and edits in this preview are local only. Sign in to use an account profile.
@@ -529,6 +515,115 @@ function PerformanceStat({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ flex: 1, minWidth: 0, gap: 5, paddingVertical: 8 }}>
       <Text style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>{value}</Text>
+      <Text style={{ color: colors.muted, fontSize: 10 }}>{label}</Text>
+    </View>
+  );
+}
+
+function AccountProfileView() {
+  const { colors } = useMoveitTheme();
+  const [profile, setProfile] = useState<Awaited<ReturnType<typeof loadMyAthleteProfile>> | null>(null);
+  const [avatarPublicUrl, setAvatarPublicUrl] = useState<string | null>(null);
+  const [sports, setSports] = useState<Array<{ sportId: string; skillLevel: string | null; isPreferred: boolean }>>([]);
+  const [counts, setCounts] = useState<{ followers: number; following: number; posts: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    if (!supabase) {
+      setError("Sign in to view your account profile.");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const profileRepository = createAthleteProfileRepository(supabase);
+      const platform = createCommunityPlatformRepository(supabase);
+      const [nextProfile, accountProfile, nextSports, social] = await Promise.all([
+        loadMyAthleteProfile(),
+        profileRepository.loadMyProfile(),
+        profileRepository.loadMySportPreferences(),
+        platform.loadMySocialSummary(),
+      ]);
+      setProfile(nextProfile);
+      setAvatarPublicUrl(accountProfile.avatarPublicUrl);
+      setSports(nextSports);
+      setCounts({ followers: social.followers, following: social.following, posts: social.posts });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Your profile could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  return (
+    <Page>
+      <Header
+        eyebrow="YOUR MOVEIT PROFILE"
+        title="Profile."
+        action={<Button label="Settings" icon="settings" variant="secondary" onPress={() => router.push("/profile/settings")} />}
+      />
+      {loading ? (
+        <View accessibilityRole="progressbar" style={{ alignItems: "center", padding: 28 }}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : error ? (
+        <Card style={{ gap: 10 }}>
+          <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
+          <Button label="Try again" variant="secondary" onPress={() => void load()} />
+        </Card>
+      ) : profile ? (
+        <>
+          <Card style={{ gap: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 13 }}>
+              {avatarPublicUrl ? (
+                <Image accessibilityLabel={`${profile.display_name} profile photo`} source={{ uri: avatarPublicUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} />
+              ) : (
+                <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: colors.softGreen, alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ color: colors.accent, fontSize: 22, fontWeight: "800" }}>{profile.display_name.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>{profile.display_name}</Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>@{profile.username} · {profile.city}</Text>
+                <Text style={{ color: colors.muted, fontSize: 10 }}>{profile.visibility} profile</Text>
+              </View>
+            </View>
+            {profile.bio ? <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>{profile.bio}</Text> : null}
+            <View style={{ flexDirection: "row", gap: 20 }}>
+              <ProfileCount label="Posts" value={counts?.posts ?? 0} />
+              <ProfileCount label="Followers" value={counts?.followers ?? 0} />
+              <ProfileCount label="Following" value={counts?.following ?? 0} />
+            </View>
+            <Button label="Edit profile" icon="edit-2" onPress={() => router.push("/profile/edit")} />
+          </Card>
+          <Card style={{ gap: 10 }}>
+            <SectionTitle title="Your sports" />
+            {sports.length ? sports.map((item) => (
+              <Text key={item.sportId} style={{ color: colors.text, fontSize: 12 }}>
+                {sportsCatalogue.find((sport) => sport.id === item.sportId)?.name ?? item.sportId}
+                {" · "}{item.skillLevel ?? "Skill not set"}{item.isPreferred ? " · Favourite" : ""}
+              </Text>
+            )) : <Text style={{ color: colors.muted, fontSize: 12 }}>Add sports and individual skill levels to help people find a game.</Text>}
+          </Card>
+          <View style={{ flexDirection: "row", gap: 9 }}>
+            <View style={{ flex: 1 }}><Button label="Fitness" icon="activity" variant="secondary" onPress={() => router.navigate("/(tabs)/fitness")} /></View>
+            <View style={{ flex: 1 }}><Button label="Settings" icon="settings" variant="secondary" onPress={() => router.push("/profile/settings")} /></View>
+          </View>
+        </>
+      ) : null}
+    </Page>
+  );
+}
+
+function ProfileCount({ label, value }: { label: string; value: number }) {
+  const { colors } = useMoveitTheme();
+  return (
+    <View style={{ gap: 2 }}>
+      <Text style={{ color: colors.text, fontSize: 14, fontWeight: "800" }}>{value}</Text>
       <Text style={{ color: colors.muted, fontSize: 10 }}>{label}</Text>
     </View>
   );

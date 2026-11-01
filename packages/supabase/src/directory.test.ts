@@ -15,6 +15,7 @@ function mockDirectoryClient(rpcData: unknown[] = [], singleData: unknown[] = []
       }),
       select: vi.fn(() => builder),
       eq: vi.fn(() => builder),
+      in: vi.fn(() => builder),
       order: vi.fn(() => builder),
       upsert: vi.fn((value: unknown) => {
         inserted.push(value);

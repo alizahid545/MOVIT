@@ -3,7 +3,6 @@ import { ActivityIndicator, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import type { AthleteProfile as CanonicalAthleteProfile } from "@moveit/shared";
 import { AthleteProfile, loadMyAthleteProfile } from "../athlete-profile-api";
-import { supabase } from "../supabase";
 import { useMoveitTheme } from "../theme";
 import { Button, Card, Header, Icon, Page } from "./ui";
 import { PersonalInformationForm } from "./personal-information-form";
@@ -45,25 +44,12 @@ export function AccountProfileEditor() {
     } : current);
   };
 
-  const signOut = async () => {
-    if (!supabase) {
-      setError("Supabase is not configured.");
-      return;
-    }
-    const { error: signOutError } = await supabase.auth.signOut();
-    if (signOutError) {
-      setError(signOutError.message);
-      return;
-    }
-    router.replace("/auth");
-  };
-
   return (
     <Page>
       <Header
         eyebrow="YOUR ACCOUNT · SUPABASE"
         title="Athlete profile."
-        action={<Button label="Sign out" variant="quiet" onPress={() => void signOut()} />}
+        action={<Button label="Back" variant="quiet" onPress={() => router.back()} />}
       />
 
       {loading ? (

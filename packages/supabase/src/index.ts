@@ -22,6 +22,7 @@ export {
   type CoachListing,
   type DirectoryInquiry,
   type DirectoryErrorCode,
+  type ManagedVenueListing,
   type VenueListing,
 } from "./directory";
 

@@ -35,7 +35,7 @@ These palettes are implemented in `apps/mobile/src/theme.tsx`.
 | Pressed accent | `#91D92B` | `#C91E2B` |
 | Light accent surface | — | `#FFF1F2` |
 
-Mobile supports Light, Dark, and System modes through an in-memory theme context. The web app has its own stylesheet and supports Light, Dark, and System selection, following the operating-system color scheme in System mode. The Athlete Card’s lime-dark/red-light treatment is the intended brand direction; a complete Athlete Card experience is not yet implemented.
+Mobile supports Light, Dark, and System modes and persists the selection on-device. The web app has its own stylesheet and supports Light, Dark, and System selection, following the operating-system color scheme in System mode. The Athlete Card’s lime-dark/red-light treatment is the intended brand direction; a complete Athlete Card experience is not yet implemented.
 
 ## Technology and repository layout
 
@@ -80,9 +80,10 @@ Mobile supports Light, Dark, and System modes through an in-memory theme context
 
 Important mobile routes include:
 
-- `app/(tabs)/`: Home, Discover, Create, Community, and Profile.
-- `app/auth.tsx`, `app/onboarding.tsx`, `app/role-selection.tsx`: authentication and role/onboarding entry points.
-- `app/search.tsx`, `app/nearby-players.tsx`, `app/venues.tsx`, `app/venues/[slug].tsx`, `app/notifications.tsx`: discovery and preview screens.
+- `app/(tabs)/`: Community, Venues, Fitness, Activities, and Profile are the primary destinations. Home, Discover, and Create remain reachable as secondary routes.
+- `app/auth.tsx`, `app/onboarding.tsx`, `app/role-selection.tsx`: authentication, Athlete/Venue signup selection, and separate athlete/business onboarding entry points.
+- `app/messages.tsx`, `app/notifications.tsx`, `app/profile/settings.tsx`, `app/profile/edit.tsx`: dedicated account destinations linked from the app header or Profile.
+- `app/search.tsx`, `app/nearby-players.tsx`, `app/venues.tsx`, `app/venues/[slug].tsx`: discovery and venue screens.
 - `app/challenges*`, `app/fitness*`, `app/rewards*`, `app/profiles*`, `app/players*`, and `app/trainers*`: feature routes.
 - `app/business*`: separate business/venue preview workspace.
 
@@ -115,13 +116,13 @@ Status labels:
 | Feature | Status | What exists now | What remains |
 |---|---|---|---|
 | Expo app startup and routing | **Implemented** | Expo Router entry point, typed routes, root layout, hydration of local preview repositories, and retryable load-error state. | Device/store release configuration and production monitoring. |
-| Five primary mobile tabs | **Implemented** | Home, Discover, Create, Community, and Profile remain the main tab destinations. | Continued UX refinement and end-to-end device testing. |
+| Primary mobile navigation | **Implemented** | Community, Venues, Fitness, Activities, and Profile are separate tabs; the app header links to Notifications and Messages. Home, Discover, and Create remain reachable as secondary routes. | Continued UX refinement, web parity, and end-to-end device testing. |
 | Shared UI and icons | **Partially implemented** | Reusable mobile UI primitives, Feather icons from the installed Expo icon library, spacing/type tokens, and theme-aware components exist. | Broader consistency, accessibility audit, and reusable interaction/state components. |
-| Mobile themes | **Partially implemented** | Light/dark palettes and a System/Light/Dark session control exist. | Persist theme preference and audit every route, contrast ratio, and system-mode transition. |
+| Mobile themes | **Partially implemented** | Light/dark palettes and a persisted System/Light/Dark preference exist, with storage errors surfaced. | Audit every route, contrast ratio, and system-mode transition. |
 | Responsive and accessible UI | **Partially implemented** | Responsive scrollable layouts and selected accessible labels/roles/touch targets are present. | Systematic screen-reader, keyboard, contrast, and small/large-screen validation. |
-| Email authentication | **Partially implemented** | Mobile and web call Supabase Auth for email/password sign-up, sign-in, and password-reset requests when configured. Mobile uses SecureStore for native auth storage. | Verify actual account lifecycle, email verification and redirect settings, and production error handling. |
+| Email authentication | **Partially implemented** | Mobile signup requires Athlete or Venue selection and stores it as user-editable intent metadata, never as an authorization grant. Mobile and web call Supabase Auth for email/password sign-in and password-reset requests when configured; mobile uses SecureStore for native auth storage. | Web role-selection parity; verify actual account lifecycle, email verification and redirect settings, and production error handling. |
 | Google auth and phone OTP | **Planned** | No provider flow is wired. | Configure providers and implement/test platform-specific callback/OTP flows. |
-| Account onboarding and active role | **Partially implemented**; **Local/demo** | Athlete/business role selection, multi-role UI, active-role routing, local persistence, and an optional `user_onboarding` Supabase preferences record exist. | Onboarding completion validation and account-backed workflows require end-to-end backend testing. Client role preferences are not authorization grants. |
+| Account onboarding and active role | **Partially implemented**; **Local/demo** | Athlete onboarding covers personal details, sports, fitness goals, discovery range, and review. Venue onboarding creates an account-backed business profile followed by a venue listing. Active-role preferences use the existing `user_onboarding` record; signup intent is not an authorization grant. | Trusted business membership/permissions and end-to-end testing against configured environments. |
 | Business membership and permissions | **Planned**; **Local/demo** | A local business preview workspace exists. A separate `user_roles` table/migration exists for privileged app roles. | Trusted membership, owner/staff permissions, verification, venue approval, and secure business management. Selecting Business does not grant `venue_owner`. |
 | Athlete profile | **Partially implemented** | Mobile and web share profile validation and repository contracts. Account-backed editing, public avatar lifecycle, sports and self-reported Beginner/Intermediate/Advanced/Professional levels, favourites, optional fitness goals, profile visibility, city, and an optional discovery radius are implemented. Versioned onboarding saves progress and resumes across personal, sports, fitness, location, and review steps. Device coordinates are read only after an explicit action and are not saved. Demo profile data remains separate. | Complete live discovery/activity integration, cross-account privacy tests, end-to-end testing on devices/browsers, and deployed app hosting remain outstanding. |
 | Follower/following relationships | **Partially implemented** | Connected accounts have a backend `player_connections` request/accept/reject/cancel workflow for public profiles. Local profile previews model more states, including private requests and follower removal. | True follow semantics/counts, private-profile request support on backend, blocking/reporting, pagination, and verified authorization. Accepted player connections are the current “mutual friends” concept; they are not a separate friendship or a full follower system. |
@@ -129,24 +130,27 @@ Status labels:
 | Athlete Points and rewards | **Partially implemented**; **Local/demo** | `rewards.ts` defines disabled-by-default earning rules, ledger states, idempotency checks, reversals, redemption eligibility, tiers, and ranking calculations. Athlete and venue views/history display truthful empty states. | Trusted server-side qualifying events, real offers/redemptions, durable ledger, anti-abuse controls, and backend authorization. No app event currently qualifies for points. |
 | Home dashboard | **Local/demo** | Scrollable Home includes search, Nearby Players and venue entry points, sports shortcuts, sample games/venues, fitness/challenge links, notifications, and demo interactions. | Live authorized catalogue, verified local inventory, real availability, and recommendation rules. |
 | Create games and activities | **Local/demo** | Create supports local unpublished game drafts; sample game join/save actions are device-local previews. They do not publish an activity or reserve a place. | Shared game records, invitations/join requests, eligibility, capacity, attendance, moderation, and notifications. |
-| Universal search | **Local/demo** | Shared local search covers the canonical sports catalogue and sample activities, venues, groups, coaches, and public challenge previews. Filters are local. | Backend search, actual player results, authorized/private-resource filtering, and live events/teams/venue data. Some visible categories have no actual result dataset. |
+| Activities | **Partially implemented** | Dedicated tab discovers upcoming public activities from the existing account-backed activity repository and links to activity details; city and sport filters are available. | Broader filters, activity creation improvements, and end-to-end participation/notification testing. |
+| Universal search | **Partially implemented**; **Local/demo** | Shared local search covers the canonical sports catalogue and sample activities, venues, groups, coaches, and public challenge previews. The dedicated Discover screen also searches published athletes, activities, venues, and coaches through authenticated Supabase repositories, with city/sport filters and pagination. | Unified cross-category search, broader filtering, and live events/teams/groups. Local sample results remain separate from backend records. |
 | Sports catalogue | **Implemented** | A canonical shared catalogue with stable IDs, aliases, categories, and selected sport metadata feeds mobile, web, and account-backed sport preferences; catalogue behavior is tested. | Dedicated sport detail pages with live related records. |
 | Nearby Players | **Partially implemented**; **Local/demo** | A dedicated screen and discovery entry points exist with clearly identified sample profiles and local navigation/follow-preview actions. | Real player query/search, availability/skill matching, privacy-aware location/radius, invitations, and backend relationships. No live proximity or precise location is provided. |
-| Gyms and sports venues | **Local/demo** | Search/list/detail screens use fictional sample listings and locally created venue previews. Facilities, hours, and prices in sample listings are illustrative; no sample is verified. | Real venue catalogue, moderation/verification, media, accurate details, and authorized availability. |
-| Venue/business management | **Local/demo** | A local registration preview, dashboard, multiple venue drafts, facilities, basic hours/pricing, review state, booking preview, and tournament drafts persist on-device. | Parent business and branch records, staff permissions, backend venue lifecycle, uploads, real review/verification, and publication approval. |
+| Gyms and sports venues | **Partially implemented**; **Local/demo** | A dedicated authenticated directory lists owner-published venue records and supports private inquiries. Listings are explicitly not independently verified; prices, facilities, photos, and live availability are not implied. Separate sample listing/detail screens remain fictional local previews. | Venue moderation/verification, media, accurate facility details, and authorized live availability. |
+| Venue/business management | **Partially implemented**; **Local/demo** | Mobile has a dedicated Venues destination and a live account-backed business/venue dashboard using existing owner-scoped records. A separate local preview still supports venue drafts, facilities, hours/pricing, review state, booking preview, and tournament drafts. | Parent business and branch lifecycle, staff permissions, uploads, real review/verification, and publication approval. |
 | Bookings and availability | **Local/demo** | Venue detail offers a local booking/price/overlap preview; business-side preview state is not a reservation system. | Server-authoritative calendars, expiring holds, race-safe conflict prevention, confirmed status transitions, cancellation/refunds, attendance, and audit history. |
 | Community feed | **Partially implemented** | With Supabase configured, mobile can read paginated text posts and create posts as the signed-in user. Without it, device-local posts can be created, edited, deleted, and paged. | Remote edit/delete, remote likes/comments/bookmarks, media, venue posts, notifications, and tested privacy policies. |
 | Likes, comments, bookmarks | **Local/demo** | Device-local interactions are available in preview. | Shared account-backed records, abuse controls, notification delivery, and backend access policies. |
 | Challenges | **Local/demo** | Local challenge create/edit/view, audience, dates, goals/rules, participation/progress preview, and invitation state transitions exist. Public local previews can appear in search. Progress is self-reported, not verified; proposed rewards are not issued. | Shared participation, backend access control, trusted/activity-derived progress, abuse prevention, and real reward issuance. |
 | Fitness tracking | **Partially implemented; Supabase required** | Authenticated API and screens support workouts/exercises/sets, goals, manual daily metrics, body-weight entries, history, and summaries. Data is intended to remain account-backed, not copied into AsyncStorage. | Apply/review fitness migration in a project and test remote RLS. Apple Health and Health Connect are not integrated; no wearable permissions or sync are implemented. |
+| Profile and settings | **Partially implemented** | Signed-in Profile is a separate account-backed view with profile details, sports, social summary, and an editor route. Settings exposes persistent theme, profile/privacy, role, and sign-out controls; account deletion is not simulated. | Expanded account preferences and end-to-end privacy/accessibility testing. |
 | Account-backed athlete profile | **Partially implemented** | Phase 2.1, Phase 2.2, and the additive athlete onboarding/preferences migration are applied to the verified linked project. Profile rows retain existing visibility-scoped RLS; fitness goals and onboarding state are owner-only; avatar objects are public while owner writes are restricted; sport preferences retain public-profile read and owner-write policies. | Separate-account authorization tests, signup-trigger creation, activity discovery integration, and real-device end-to-end coverage remain. |
-| Notifications | **UI only** | Bell entry point and an empty-state Notifications route exist. | Notification records, delivery, unread state, read/mark-all actions, categories, preferences, and deep links. No delivery is simulated. |
+| Notifications | **Partially implemented** | Dedicated screen loads the existing account-backed notification records and supports marking one or all unread records as read. | Delivery generation, categories/preferences, deep links, and end-to-end authorization tests. No delivery is simulated by the client. |
+| Private messages | **Planned** | Dedicated Messages screen explains that conversations are not yet stored or shown. | Conversation/message schema, membership authorization, RLS, realtime delivery, moderation, and notification integration. No fake conversation data is displayed. |
 | Events and tournaments | **Local/demo** | Business users can create local tournament drafts using catalogue sports. Search and other screens include sample event concepts. | Public event records, registration, teams/fixtures/results, operations, real participant workflows, and notifications. |
 | Teams, groups, and communities | **Local/demo**; **Planned** | Search can show isolated sample group records; there is no complete group-detail/membership workflow. | Account-backed groups, members, roles, events, feed, moderation, and discovery. |
 | Venue Points, offers, and ranking | **Partially implemented**; **Local/demo** | Separate venue ledgers/rules/tier criteria and ranking calculations are implemented and unit-tested. Rules are disabled; no trusted venue evidence, offers, or valid ranking dataset exists. | Verified booking/payment/review signals, server-owned ledger, anti-manipulation controls, transparent criteria, and sufficient verified data. |
 | Payments and settlements | **Planned**; **Blocked** | No payment provider or trusted transaction flow is connected. | Secure checkout, webhook verification, refunds, commissions, statements, payouts, reconciliation, and venue/business financial reporting. |
-| Web application | **Partially implemented** | Vite/React web page supports Supabase email auth and basic profile onboarding/view/edit when configured; it shows a setup state without credentials. | Web feature parity, responsive product routes, account/role onboarding parity, and deployment verification. |
-| Supabase/backend | **Partially implemented**; **Blocked** | Optional client factories, mobile/web auth and data-access code, shared types, and four SQL migrations exist. | Configure a project, review/apply migrations, verify auth/RLS/storage/functions, add missing product schemas, and test with ordinary accounts. |
+| Web application | **Partially implemented** | Vite/React web page supports Supabase email auth and account-backed athlete onboarding/profile editing when configured; it shows a setup state without credentials. | Web feature parity, signup role selection, responsive product routes, and deployment verification. |
+| Supabase/backend | **Partially implemented**; **Blocked** | Optional client factories, mobile/web auth and data-access code, shared types, and eight SQL migrations exist. | Configure a project, review/apply migrations, verify auth/RLS/storage/functions, add missing product schemas, and test with ordinary accounts. |
 
 ## Data, local previews, and privacy boundaries
 
@@ -158,7 +162,7 @@ This is one device’s unencrypted development data, not an account database or 
 
 ### Supabase and migrations
 
-The supplied Supabase project URL and public publishable key are configured in app-specific, ignored local files (`apps/mobile/.env` and `apps/web/.env`). The tracked `.env.example` contains blank placeholders only. The CLI verified the linked project reference as `zuzusqpxjnqobwiafwog`; the initial five migrations and the Phase 2.1 avatar migrations are recorded there. Authenticated profile editing and avatar lifecycle operations were tested against that project. These results apply only to this linked project; they do not prove other environments are configured.
+The supplied Supabase project URL and public publishable key are configured in app-specific, ignored local files (`apps/mobile/.env` and `apps/web/.env`). The tracked `.env.example` contains blank placeholders only. The CLI verified the linked project reference as `zuzusqpxjnqobwiafwog`; the initial five migrations, Phase 2.1 avatar migrations, and Phase 2.2 athlete sport-preference migration are recorded there. Authenticated profile editing and avatar lifecycle operations were tested against that project. These results apply only to this linked project; they do not prove other environments are configured.
 
 The checked-in migrations are:
 
@@ -173,9 +177,9 @@ The checked-in migrations are:
 
 The existing profile primary key `profiles.id` already references `auth.users(id)`; it is retained for compatibility with existing routes, foreign keys, and queries rather than adding a second `user_id`. The existing `handle_new_user()` trigger creates a profile row at signup; the new profile fields receive safe defaults/null values. Profile fitness goals are stored separately and readable only by their owner, even when the profile itself is public.
 
-**Static RLS coverage check:** all 12 application tables declared across these migration files explicitly enable RLS and have at least one policy: `profiles`, `user_roles`, `posts`, `player_connections`, `workouts`, `workout_exercises`, `workout_sets`, `fitness_goals`, `fitness_daily_metrics`, `body_weight_entries`, `user_onboarding`, and `profile_fitness_goals`. The local Supabase config exposes `public` and `graphql_public`; these migrations create no app tables in `graphql_public`. This is a source review only: it does not inspect the remote project, prove migrations ran, or establish that policy behavior is correct. Some intended flows are deliberately absent from the current policies (for example private-profile follow requests and approved-follower access to private posts). The `user_onboarding` table stores preferences, not grants of privileged roles.
+**Static RLS coverage check:** all 13 application tables declared across these migration files explicitly enable RLS and have at least one policy: `profiles`, `user_roles`, `posts`, `player_connections`, `workouts`, `workout_exercises`, `workout_sets`, `fitness_goals`, `fitness_daily_metrics`, `body_weight_entries`, `user_onboarding`, `profile_fitness_goals`, and `profile_sports_preferences`. The local Supabase config exposes `public` and `graphql_public`; these migrations create no app tables in `graphql_public`. This is a source review only: it does not inspect the remote project, prove migrations ran, or establish that policy behavior is correct. Some intended flows are deliberately absent from the current policies (for example private-profile follow requests and approved-follower access to private posts). The `user_onboarding` table stores preferences, not grants of privileged roles.
 
-Migration history, avatar policies, and sports-preference RLS/function grants were verified on the linked MOVEIT project. Authenticated profile/avatar and sports-preference workflows were exercised on web. Other environments still require an explicit project-reference check, migration review, and workflow verification before applying changes. No migrations currently implement venues/business memberships, bookings/payments, notifications, challenges/participants, follower counts, rewards ledgers/offers, or tournaments.
+Migration history, avatar policies, and sports-preference RLS/function grants were verified on the linked MOVEIT project. Authenticated profile/avatar and sports-preference workflows were exercised on web. The checked-in migrations also define published venue/coach directories and private inquiries, activity participation, social interactions, and notifications; they do not provide venue-business membership authorization, bookings/payments, challenge or tournament workflows, follower-count summaries, or rewards ledgers/offers. Other environments still require an explicit project-reference check, migration review, and workflow verification before applying changes.
 
 The Supabase client is initialized from these variable names (never commit their values):
 
@@ -216,10 +220,10 @@ Venue Points are separate from athlete points. Future ranking must consider veri
 - Supabase environment values are placeholders in the checked-in example; no remote project, migration application, or RLS verification is established by this repository.
 - The web application does not provide the mobile product experience.
 - Mobile local/demo workflows are not multi-user, synchronized, authoritative, or secure.
-- Business registration and venue management are preview records. Role choice does not grant business permissions, verification, or publication.
+- Local business registration and venue management remain preview-only; the separate authenticated workflow creates account-backed business/venue directory records. Role choice does not grant business permissions or verification.
 - Sample user/venue/event/trainer data is fictional. Sample venue prices and facility details are illustrative; no live availability or verified status is claimed.
 - Universal search is a local index, not a backend search service. Player search and live nearby matching are not implemented.
-- Notifications have no backing notification records or delivery workflow.
+- Notifications use existing account-backed records, but event generation and delivery workflows are incomplete. Private messaging has no schema or realtime backend and remains an honest empty state.
 - Real booking conflict prevention, payments, refunds, commission, settlements, attendance verification, and financial reporting are absent.
 - Google/phone authentication, media upload, wearables, and production rewards redemption are absent.
 - No lint script is declared in the root or workspace package manifests.
@@ -290,8 +294,8 @@ Priorities below reflect the current gap between local product previews and a pr
 
 ### Phase 1 — UI and local functionality
 
-- Refine Home, Discover, Nearby Players, venues, sports, Profile, and both themes.
-- Verify the five-tab navigation, route links, empty/error/loading states, and accessibility.
+- Refine Community, Venues, Fitness, Activities, Profile, and both themes; keep Home, Discover, and Create available as secondary routes.
+- Verify primary navigation, route links, empty/error/loading states, and accessibility.
 - Complete the Athlete Card presentation and integrate it into Profile.
 - Keep Athlete Points and Venue Points interfaces truthful and clearly local; do not enable awards without trusted evidence.
 - Preserve a reliable Expo demo and avoid introducing fake backend success.
@@ -327,7 +331,7 @@ Other agreed but unimplemented scope includes streaks, wearable integrations, AI
 ## Working conventions
 
 - Use TypeScript types and shared Zod validation from `packages/shared` where the same model or input is used across apps.
-- Keep routes under the existing Expo Router hierarchy; preserve the five main athlete tabs and keep business workspace routes separate.
+- Keep routes under the existing Expo Router hierarchy; preserve the primary Community, Venues, Fitness, Activities, and Profile tabs and keep business workspace routes separate.
 - Keep UI independent of storage details. Add repository/service functions rather than coupling screens directly to Supabase or raw demo arrays.
 - Use `sports-catalogue.ts` canonical IDs and aliases instead of introducing duplicate sport lists.
 - Keep themes token-driven and use the existing component/icon patterns. Add accessible names, roles, adequate touch targets, and contrast.
@@ -341,10 +345,11 @@ Latest local verification:
 
 | Command | Result |
 |---|---|
-| `npm test` | Passed: 14 test files, 111 tests, including profile validation, sport preference validation, repository ownership, and avatar lifecycle tests. |
+| `npm test` | Passed: 16 test files, 139 tests. |
 | `npm run typecheck` | Passed: mobile and web TypeScript checks. |
 | `npm run build:web` | Passed: TypeScript build check and Vite production build. Existing Zod annotation and large-chunk warnings remain non-blocking. |
-| `npx expo export --platform web` | Passed: Expo bundled the updated mobile app after the onboarding route change. |
+| `npx expo export --platform web` (from `apps/mobile`) | Passed: Expo bundled the mobile app and its routes. |
+| `git diff --check` | Passed. |
 | Mobile configured Supabase Auth health request and UI check | Passed: HTTP 200; the screen displayed reachable status. The request did not sign in or query/write app data. |
 | Migration RLS audit | All 13 application tables across the checked-in migrations enable RLS and have policies; remote sports table RLS, grants, invoker function settings, and execute permissions were queried on MOVEIT. |
 | Lint | Not run: no lint script is configured. |

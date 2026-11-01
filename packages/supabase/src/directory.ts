@@ -37,6 +37,10 @@ export type VenueListing = {
   createdAt: string;
 };
 
+export type ManagedVenueListing = VenueListing & {
+  status: "draft" | "published";
+};
+
 export type CoachListing = {
   userId: string;
   username: string;
@@ -79,6 +83,10 @@ type VenueRow = {
   sport_ids: string[];
   business_name: string;
   created_at: string;
+};
+
+type ManagedVenueRow = VenueRow & {
+  status: ManagedVenueListing["status"];
 };
 
 type CoachRow = {
@@ -205,6 +213,30 @@ export function createDirectoryRepository(client: SupabaseClient) {
         area: row.area as string,
         status: row.status as BusinessProfile["status"],
         createdAt: row.created_at as string,
+      }));
+    },
+
+    async loadMyVenues(): Promise<ManagedVenueListing[]> {
+      const ownerId = await currentUserId();
+      const { data: businessRows, error: businessesError } = await client.from("business_profiles")
+        .select("id,owner_id,name,business_type,city,area,status,created_at")
+        .eq("owner_id", ownerId)
+        .order("created_at", { ascending: false });
+      if (businessesError) {
+        throw new DirectoryRepositoryError("DIRECTORY_LOAD_FAILED", businessesError.message, { cause: businessesError });
+      }
+      const businesses = (businessRows ?? []).map((row) => ({ id: row.id as string, name: row.name as string }));
+      if (businesses.length === 0) return [];
+      const { data, error } = await client.from("venues")
+        .select("id,business_id,name,description,city,area,sport_ids,status,created_at")
+        .in("business_id", businesses.map(({ id }) => id))
+        .order("created_at", { ascending: false });
+      if (error) {
+        throw new DirectoryRepositoryError("DIRECTORY_LOAD_FAILED", error.message, { cause: error });
+      }
+      return ((data ?? []) as unknown as ManagedVenueRow[]).map((row) => ({
+        ...mapVenue({ ...row, business_name: businesses.find(({ id }) => id === row.business_id)?.name ?? "" }),
+        status: row.status,
       }));
     },
 

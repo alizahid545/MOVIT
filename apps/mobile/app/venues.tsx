@@ -8,6 +8,10 @@ import { supabase } from "../src/supabase";
 import { useMoveitTheme } from "../src/theme";
 
 export default function VenueDiscoveryScreen() {
+  return <VenueDirectoryScreen />;
+}
+
+export function VenueDirectoryScreen({ inTab = false }: { inTab?: boolean }) {
   const { colors } = useMoveitTheme();
   const repository = useMemo(() => supabase ? createDirectoryRepository(supabase) : null, []);
   const [query, setQuery] = useState("");
@@ -112,7 +116,11 @@ export default function VenueDiscoveryScreen() {
 
   return (
     <Page refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={colors.accent} />}>
-      <Header eyebrow="LIVE VENUE DIRECTORY" title="Find a training space." action={<Button label="Back" variant="quiet" onPress={() => router.back()} />} />
+      <Header
+        eyebrow="LIVE VENUE DIRECTORY"
+        title="Find a training space."
+        action={inTab ? undefined : <Button label="Back" variant="quiet" onPress={() => router.back()} />}
+      />
       <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
         Listings are submitted by their owners and are not independently verified. MOVEIT does not show booking availability or prices here.
       </Text>

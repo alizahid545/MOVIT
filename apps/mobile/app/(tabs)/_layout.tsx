@@ -1,12 +1,13 @@
 import { Tabs } from "expo-router";
 import { Icon } from "../../src/components/ui";
+import { AppTopBar } from "../../src/components/app-top-bar";
 import { useMoveitTheme } from "../../src/theme";
 
 const destinations = [
-  { name: "index", title: "Home", icon: "home" },
-  { name: "discover", title: "Discover", icon: "search" },
-  { name: "create", title: "Create", icon: "plus-square" },
   { name: "community", title: "Community", icon: "users" },
+  { name: "venues", title: "Venues", icon: "map-pin" },
+  { name: "fitness", title: "Fitness", icon: "activity" },
+  { name: "activities", title: "Activities", icon: "calendar" },
   { name: "profile", title: "Profile", icon: "user" },
 ] as const;
 
@@ -16,7 +17,8 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <AppTopBar />,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: {
@@ -47,6 +49,9 @@ export default function TabLayout() {
           }}
         />
       ))}
+      <Tabs.Screen name="index" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="discover" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="create" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }

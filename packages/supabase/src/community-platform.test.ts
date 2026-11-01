@@ -9,6 +9,7 @@ function mockPlatformClient(
   tableResults: Record<string, Array<{ data?: unknown; error?: unknown }>> = {},
 ) {
   const rpc = vi.fn(async () => rpcResults.shift() ?? { data: null, error: null });
+  const filters: Array<{ table: string; operator: "eq" | "is"; column: string; value: unknown }> = [];
   const from = vi.fn((table: string) => {
     const results = tableResults[table] ?? [];
     const builder = {
@@ -16,8 +17,14 @@ function mockPlatformClient(
       insert: vi.fn(() => builder),
       update: vi.fn(() => builder),
       delete: vi.fn(() => builder),
-      eq: vi.fn(() => builder),
-      is: vi.fn(() => builder),
+      eq: vi.fn((column: string, value: unknown) => {
+        filters.push({ table, operator: "eq", column, value });
+        return builder;
+      }),
+      is: vi.fn((column: string, value: unknown) => {
+        filters.push({ table, operator: "is", column, value });
+        return builder;
+      }),
       in: vi.fn(() => builder),
       or: vi.fn(() => builder),
       gt: vi.fn(() => builder),
@@ -44,7 +51,7 @@ function mockPlatformClient(
       })),
     },
   } as unknown as SupabaseClient;
-  return { client, rpc, from };
+  return { client, rpc, from, filters };
 }
 
 describe("createCommunityPlatformRepository", () => {
@@ -222,6 +229,19 @@ describe("createCommunityPlatformRepository", () => {
     expect(mock.from).toHaveBeenCalledWith("player_follows");
     expect(mock.from).toHaveBeenCalledWith("player_connections");
     expect(mock.from).toHaveBeenCalledWith("notifications");
+  });
+
+  it("marks the signed-in user's unread notifications as read", async () => {
+    const mock = mockPlatformClient();
+    const repository = createCommunityPlatformRepository(mock.client);
+
+    await expect(repository.markAllNotificationsRead()).resolves.toBeUndefined();
+    expect(mock.client.auth.getUser).toHaveBeenCalledOnce();
+    expect(mock.from).toHaveBeenCalledWith("notifications");
+    expect(mock.filters).toEqual([
+      { table: "notifications", operator: "eq", column: "user_id", value: userId },
+      { table: "notifications", operator: "is", column: "read_at", value: null },
+    ]);
   });
 
   it("maps connection requests relative to the authenticated user", async () => {

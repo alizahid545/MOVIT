@@ -6,7 +6,11 @@ import {
   type AthleteOnboardingStep,
 } from "@moveit/shared";
 import { createAthleteProfileRepository } from "@moveit/supabase";
-import { getLocalPreviewAccountId, loadAccountOnboarding, saveAccountOnboarding } from "../src/account-onboarding";
+import {
+  getLocalPreviewAccountId,
+  loadAccountOnboarding,
+  saveAccountOnboarding,
+} from "../src/account-onboarding";
 import { AthletePreferencesForm } from "../src/components/athlete-preferences-form";
 import { AthleteOnboardingReview } from "../src/components/athlete-onboarding-review";
 import { PersonalInformationForm } from "../src/components/personal-information-form";
@@ -120,9 +124,19 @@ export default function Onboarding() {
 
   const finish = async () => {
     try {
+      const userId = supabase
+        ? (await supabase.auth.getUser()).data.user?.id
+        : getLocalPreviewAccountId();
+      if (!userId) throw new Error("Please sign in again to complete onboarding.");
       if (supabase) {
         await createAthleteProfileRepository(supabase).saveMyAthleteOnboardingState("review", true);
       }
+      const account = await loadAccountOnboarding(userId);
+      await saveAccountOnboarding(userId, {
+        selectedRoles: Array.from(new Set([...account.selectedRoles, "athlete"])),
+        completedRoles: Array.from(new Set([...account.completedRoles, "athlete"])),
+        activeRole: "athlete",
+      });
       router.replace("/(tabs)");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Onboarding could not be completed.");

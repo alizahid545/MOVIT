@@ -5,6 +5,7 @@ import { createDirectoryRepository } from "@moveit/supabase";
 import { Button, Header, Page, Pill, SectionTitle } from "../../../src/components/ui";
 import { getPreviewBusiness, createPreviewVenue, addPreviewFacility, facilitySchema, getPreviewBusinessOwnerId, slugify } from "../../../src/venue-preview";
 import { searchSports, type CatalogueSport } from "../../../src/sports-catalogue";
+import { loadAccountOnboarding, saveAccountOnboarding } from "../../../src/account-onboarding";
 import { supabase } from "../../../src/supabase";
 import { useMoveitTheme } from "../../../src/theme";
 
@@ -107,6 +108,7 @@ function LiveVenueRegistration({ businessId, initialCity, initialArea }: { busin
   const [sportId, setSportId] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [listingCreated, setListingCreated] = useState(false);
 
   const publish = async () => {
     if (!supabase) {
@@ -119,6 +121,7 @@ function LiveVenueRegistration({ businessId, initialCity, initialArea }: { busin
     }
     setSaving(true);
     setError("");
+    let venueCreated = false;
     try {
       await createDirectoryRepository(supabase).createVenue({
         businessId,
@@ -129,9 +132,23 @@ function LiveVenueRegistration({ businessId, initialCity, initialArea }: { busin
         sportIds: sportId ? [sportId] : [],
         status: "published",
       });
-      router.replace("/venues");
+      venueCreated = true;
+      setListingCreated(true);
+      const { data: auth, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!auth.user) throw new Error("Sign in again to complete venue onboarding.");
+      const account = await loadAccountOnboarding(auth.user.id);
+      await saveAccountOnboarding(auth.user.id, {
+        selectedRoles: Array.from(new Set([...account.selectedRoles, "business"])),
+        completedRoles: Array.from(new Set([...account.completedRoles, "business"])),
+        activeRole: "business",
+      });
+      router.replace("/business/dashboard");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Venue listing could not be published.");
+      const message = caught instanceof Error ? caught.message : "Venue listing could not be published.";
+      setError(venueCreated
+        ? `The venue listing was created, but onboarding could not be completed. ${message} Do not submit the listing again.`
+        : message);
     } finally {
       setSaving(false);
     }
@@ -139,7 +156,7 @@ function LiveVenueRegistration({ businessId, initialCity, initialArea }: { busin
 
   return (
     <Page>
-      <Header eyebrow="LIVE VENUE LISTING" title="Add a venue location." action={<Button label="Back" variant="quiet" onPress={() => router.back()} />} />
+      <Header eyebrow="VENUE ONBOARDING · STEP 2 OF 2" title="Add your first location." action={<Button label="Back" variant="quiet" onPress={() => router.back()} />} />
       <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>Add additional locations under the same business profile whenever needed. Published listings are owner-submitted and not independently verified.</Text>
       <Field label="Venue name" value={name} onChangeText={setName} />
       <Field label="Description" value={description} onChangeText={setDescription} />
@@ -153,7 +170,11 @@ function LiveVenueRegistration({ businessId, initialCity, initialArea }: { busin
         </View>
       </View>
       {error ? <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 12 }}>{error}</Text> : null}
-      <Button label={saving ? "Publishing…" : "Publish venue listing"} icon="map-pin" disabled={saving} onPress={() => void publish()} />
+      {listingCreated ? (
+        <Button label="Open business dashboard" icon="briefcase" onPress={() => router.replace("/business/dashboard")} />
+      ) : (
+        <Button label={saving ? "Publishing…" : "Publish venue listing"} icon="map-pin" disabled={saving} onPress={() => void publish()} />
+      )}
     </Page>
   );
 }

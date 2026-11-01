@@ -99,7 +99,7 @@ export function getPostAuthenticationRoute(onboarding: AccountOnboarding) {
 }
 
 export function getOnboardingRoute(role: AccountRole) {
-  return role === "athlete" ? "/onboarding" : "/business/register";
+  return role === "athlete" ? "/onboarding" : "/business/register?mode=live";
 }
 
 export async function resetAccountOnboardingForTests(): Promise<void> {

@@ -16,7 +16,7 @@ describe("account onboarding preview", () => {
 
     expect(getPostAuthenticationRoute(account)).toBe("/role-selection");
     expect(getOnboardingRoute("athlete")).toBe("/onboarding");
-    expect(getOnboardingRoute("business")).toBe("/business/register");
+    expect(getOnboardingRoute("business")).toBe("/business/register?mode=live");
   });
 
   it("routes returning users to their selected completed profile", async () => {
